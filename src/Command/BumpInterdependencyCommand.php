@@ -8,6 +8,7 @@ use MonorepoBuilder202210\Symfony\Component\Console\Input\InputInterface;
 use MonorepoBuilder202210\Symfony\Component\Console\Output\OutputInterface;
 use Symplify\MonorepoBuilder\DependencyUpdater;
 use Symplify\MonorepoBuilder\FileSystem\ComposerJsonProvider;
+use Symplify\MonorepoBuilder\Package\PackageNamesProvider;
 use Symplify\MonorepoBuilder\Validator\SourcesPresenceValidator;
 use MonorepoBuilder202210\Symplify\PackageBuilder\Console\Command\AbstractSymplifyCommand;
 use MonorepoBuilder202210\Symplify\SymplifyKernel\Exception\ShouldNotHappenException;
@@ -29,12 +30,19 @@ final class BumpInterdependencyCommand extends AbstractSymplifyCommand
      * @var \Symplify\MonorepoBuilder\Validator\SourcesPresenceValidator
      */
     private $sourcesPresenceValidator;
-    public function __construct(DependencyUpdater $dependencyUpdater, ComposerJsonProvider $composerJsonProvider, SourcesPresenceValidator $sourcesPresenceValidator)
+
+    /**
+     * @var PackageNamesProvider
+     */
+    private $packageNamesProvider;
+
+    public function __construct(DependencyUpdater $dependencyUpdater, ComposerJsonProvider $composerJsonProvider, SourcesPresenceValidator $sourcesPresenceValidator, PackageNamesProvider $packageNamesProvider)
     {
         $this->dependencyUpdater = $dependencyUpdater;
         $this->composerJsonProvider = $composerJsonProvider;
         $this->sourcesPresenceValidator = $sourcesPresenceValidator;
         parent::__construct();
+        $this->packageNamesProvider = $packageNamesProvider;
     }
     protected function configure() : void
     {
@@ -44,17 +52,9 @@ final class BumpInterdependencyCommand extends AbstractSymplifyCommand
     }
     protected function execute(InputInterface $input, OutputInterface $output) : int
     {
-        $this->sourcesPresenceValidator->validateRootComposerJsonName();
         /** @var string $version */
         $version = $input->getArgument(self::VERSION_ARGUMENT);
-        $rootComposerJson = $this->composerJsonProvider->getRootComposerJson();
-        // @todo resolve better for only found packages
-        // see https://github.com/symplify/symplify/pull/1037/files
-        $vendorName = $rootComposerJson->getVendorName();
-        if ($vendorName === null) {
-            throw new ShouldNotHappenException();
-        }
-        $this->dependencyUpdater->updateFileInfosWithVendorAndVersion($this->composerJsonProvider->getPackagesComposerFileInfos(), $vendorName, $version);
+        $this->dependencyUpdater->updateFileInfosWithPackagesAndVersion($this->composerJsonProvider->getPackagesComposerFileInfos(), $this->packageNamesProvider->provide(), $version);
         $successMessage = \sprintf('Inter-dependencies of packages were updated to "%s".', $version);
         $this->symfonyStyle->success($successMessage);
         return self::SUCCESS;
